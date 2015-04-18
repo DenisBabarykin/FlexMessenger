@@ -6,7 +6,10 @@ using System.Threading.Tasks;
 
 namespace SocketsWrapper
 {
-    interface INetClient
+    public interface INetClient
     {
+        public byte[] Recieve();
+        public void Send(byte[] byteAr);
+        public void Close();
     }
 }

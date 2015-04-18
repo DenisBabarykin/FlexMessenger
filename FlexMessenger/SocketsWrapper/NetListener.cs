@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,24 +11,29 @@ namespace SocketsWrapper
     public class NetListener : INetListener
     {
         TcpListener tcpListener;
+
+        public NetListener(IPAddress localaddr, int port)
+        {
+            tcpListener = new TcpListener(localaddr, port);
+        }
         public void Start()
         {
-            throw new NotImplementedException();
+            tcpListener.Start();
         }
 
         public void Stop()
         {
-            throw new NotImplementedException();
+            tcpListener.Stop();
         }
 
         public System.Net.EndPoint LocalEndpoint
         {
-            get { throw new NotImplementedException(); }
+            get { return tcpListener.LocalEndpoint; }
         }
 
         public NetClient AcceptClient()
         {
-            throw new NotImplementedException();
+            return new NetClient(tcpListener.AcceptTcpClient());
         }
     }
 }
