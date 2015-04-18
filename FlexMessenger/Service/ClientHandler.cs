@@ -9,9 +9,12 @@ namespace Service
 {
     public class ClientHandler
     {
+        INetClient netClient;
+
         public ClientHandler(INetClient netClient) 
         {
-            
+            this.netClient = netClient;
+
         }
     }
 }

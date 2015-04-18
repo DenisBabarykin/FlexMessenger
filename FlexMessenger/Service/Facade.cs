@@ -42,7 +42,7 @@ namespace Service
             {
                 Console.WriteLine("[{0}] Loading users...", DateTime.Now);
                 BinaryFormatter bf = new BinaryFormatter();
-                FileStream file = new FileStream(usersFilename, FileMode.Open, FileAccess.Read);
+                FileStream file = new FileStream(usersFilename, FileMode.OpenOrCreate, FileAccess.Read);
                 if (file.Length > 0)
                 {
                     UserInfo[] infos = (UserInfo[])bf.Deserialize(file);
