@@ -5,6 +5,8 @@ VisualStudioVersion = 12.0.21005.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Service", "Service\Service.csproj", "{79023450-3553-4AAA-9EE0-6B27A906398D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SocketsWrapper", "SocketsWrapper\SocketsWrapper.csproj", "{FEB1526D-EFE1-4601-9B3B-4AB6FC6AA2A7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{79023450-3553-4AAA-9EE0-6B27A906398D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{79023450-3553-4AAA-9EE0-6B27A906398D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{79023450-3553-4AAA-9EE0-6B27A906398D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FEB1526D-EFE1-4601-9B3B-4AB6FC6AA2A7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FEB1526D-EFE1-4601-9B3B-4AB6FC6AA2A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FEB1526D-EFE1-4601-9B3B-4AB6FC6AA2A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FEB1526D-EFE1-4601-9B3B-4AB6FC6AA2A7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
