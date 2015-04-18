@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SocketsWrapper;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,11 +7,11 @@ using System.Threading.Tasks;
 
 namespace Service
 {
-    class Program
+    public class ClientHandler
     {
-        static void Main(string[] args)
+        public ClientHandler(INetClient netClient) 
         {
-            FacadeSingleton.Instance.Init();
+            
         }
     }
 }

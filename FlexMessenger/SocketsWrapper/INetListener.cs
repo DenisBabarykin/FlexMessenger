@@ -9,9 +9,9 @@ namespace SocketsWrapper
 {
     public interface INetListener
     {
-        public void Start();
-        public void Stop();
-        public EndPoint LocalEndpoint { get; }
-        public NetClient AcceptClient();
+        void Start();
+        void Stop();
+        EndPoint LocalEndpoint { get; }
+        INetClient AcceptClient();
     }
 }

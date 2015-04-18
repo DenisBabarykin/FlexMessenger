@@ -31,7 +31,7 @@ namespace SocketsWrapper
             get { return tcpListener.LocalEndpoint; }
         }
 
-        public NetClient AcceptClient()
+        public INetClient AcceptClient()
         {
             return new NetClient(tcpListener.AcceptTcpClient());
         }

@@ -12,9 +12,9 @@ namespace Service
         public string UserName;
         public string Password;
         [NonSerialized]
-        public bool LoggedIn;      // Is logged in and connected?
+        public bool LoggedIn;      
         [NonSerialized]
-        //public Client Connection;  // Connection info
+        public ClientHandler Connection;
 
         public UserInfo(string user, string pass)
         {
@@ -22,12 +22,13 @@ namespace Service
             this.Password = pass;
             this.LoggedIn = false;
         }
-        //public UserInfo(string user, string pass, Client conn)
-        //{
-        //    this.UserName = user;
-        //    this.Password = pass;
-        //    this.LoggedIn = true;
-        //    this.Connection = conn;
-        //}
+
+        public UserInfo(string user, string pass, ClientHandler conn)
+        {
+            this.UserName = user;
+            this.Password = pass;
+            this.LoggedIn = true;
+            this.Connection = conn;
+        }
     }
 }

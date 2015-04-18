@@ -8,8 +8,8 @@ namespace SocketsWrapper
 {
     public interface INetClient
     {
-        public byte[] Recieve();
-        public void Send(byte[] byteAr);
-        public void Close();
+        byte[] Recieve();
+        void Send(byte[] byteAr);
+        void Close();
     }
 }
