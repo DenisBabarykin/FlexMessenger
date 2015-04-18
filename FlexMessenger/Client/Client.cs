@@ -6,10 +6,15 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.IO;
-using System.Security.Cryptography;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Configuration;
+using SocketsWrapper;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Runtime.Serialization.Formatters.Soap;
+using FileLoggerLib;
+using Encryption;
 
 namespace FlexMessengerClient
 {
@@ -20,16 +25,36 @@ namespace FlexMessengerClient
         bool _logged = false;  
         string _user;        
         string _pass;          
-        bool reg;     
+        bool reg;
 
-        public string Server { get { return ConfigurationManager.AppSettings["ServiceIP"]; } }  // Address of server. In this case - local IP address.
+        IFormatter serializator;
+
+        Message curMessage;
+
+        public string Server { get { return ConfigurationManager.AppSettings["ServiceIP"]; } }  
         public int Port { get { return Convert.ToInt32(ConfigurationManager.AppSettings["Port"]); } }
+
+        static string logFileName = Environment.CurrentDirectory + "\\" + ConfigurationManager.AppSettings["logFileName"];  //          
+
+        static string lType = ConfigurationManager.AppSettings["loggerType"];   //
+
+        static LoggerType logType = lType == "Server" ? LoggerType.SERVER : LoggerType.CLIENT;    //
+
+        public Object thisLock = new Object();     //
+
+        public FileLogger fileLogger = new FileLogger(logFileName, logType);   //
+
+        SymmetricAlgorithm sa;
+        AsymmetricAlgorithm asa;
+
+        byte[] SAKey;
+        byte[] SAIV; 
+
 
         public bool IsLoggedIn { get { return _logged; } }
         public string UserName { get { return _user; } }
         public string Password { get { return _pass; } }
 
-        // Start connection thread and login or register.
         void connect(string user, string password, bool register)
         {
             if (!_conn)
@@ -38,10 +63,26 @@ namespace FlexMessengerClient
                 _user = user;
                 _pass = password;
                 reg = register;
-                recieverThread = new Thread(new ThreadStart(SetupConn));
+                recieverThread = new Thread(new ThreadStart(SetupConnection));
                 recieverThread.Start();
             }
         }
+        public byte[] Serialize(Message message)
+        {
+            using (var stream = new MemoryStream())
+            {
+                serializator.Serialize(stream, message);
+                return stream.ToArray();
+            }
+        }
+        public Message Deserialize(byte[] binaryData)
+        {
+            using (var stream = new MemoryStream(binaryData))
+            {
+                return (Message)serializator.Deserialize(stream);
+            }
+        }
+
         public void Login(string user, string password)
         {
             connect(user, password, false);
@@ -60,23 +101,19 @@ namespace FlexMessengerClient
         {
             if (_conn)
             {
-                bw.Write(IM_IsAvailable);
-                bw.Write(user);
-                bw.Flush();
+                curMessage = new Message() { type = MessageType.IsAvailable, recipient = user };
+                netClient.Send(Encrypt(Serialize(curMessage)));
             }
         }
         public void SendMessage(string to, string msg)
         {
             if (_conn)
             {
-                bw.Write(IM_Send);
-                bw.Write(to);
-                bw.Write(msg);
-                bw.Flush();
+                curMessage = new Message() { type = MessageType.Send, recipient = to, message = msg };
+                netClient.Send(Encrypt(Serialize(curMessage)));
             }
         }
 
-        // Events
         public event EventHandler LoginOK;
         public event EventHandler RegisterOK;
         public event FMErrorEventHandler LoginFailed;
@@ -88,27 +125,59 @@ namespace FlexMessengerClient
         virtual protected void OnLoginOK()
         {
             if (LoginOK != null)
+            {
                 LoginOK(this, EventArgs.Empty);
+                lock (thisLock)
+                {
+                    fileLogger.WriteLogFile("LoginOK: \n"+ _user);
+                }
+            }
         }
         virtual protected void OnRegisterOK()
         {
             if (RegisterOK != null)
+            {
                 RegisterOK(this, EventArgs.Empty);
+                lock (thisLock)
+                {
+                    fileLogger.WriteLogFile("RegisterOK: \n" + _user);
+                }
+            }
         }
         virtual protected void OnLoginFailed(FMErrorEventArgs e)
         {
             if (LoginFailed != null)
+            {
                 LoginFailed(this, e);
+                lock (thisLock)
+                {
+                    fileLogger.WriteLogFile("LoginFailed: \n" + _user);
+                }
+            }
         }
         virtual protected void OnRegisterFailed(FMErrorEventArgs e)
         {
             if (RegisterFailed != null)
+            {
                 RegisterFailed(this, e);
+                lock (thisLock)
+                {
+                    fileLogger.WriteLogFile("RegisterFailed: \n" + _user);
+                }
+            }
         }
         virtual protected void OnDisconnected()
         {
             if (Disconnected != null)
+            {
                 Disconnected(this, EventArgs.Empty);
+                lock (thisLock)
+                {
+                    fileLogger.WriteLogFile("Disconnected: \n" + _user);
+                    fileLogger.CloseLogFile();
+                }
+            }
+
         }
         virtual protected void OnUserAvail(AvailEventArgs e)
         {
@@ -121,47 +190,90 @@ namespace FlexMessengerClient
                 MessageReceived(this, e);
         }
 
-        
-        TcpClient client;
-        NetworkStream netStream;
-        SslStream ssl;
-        BinaryReader br;
-        BinaryWriter bw;
+        NetClient netClient;
 
-        void SetupConn()  // Setup connection and login
+        public byte[] Encrypt(byte[] data)
         {
-            client = new TcpClient(Server, Port);  // Connect to the server.
-            netStream = client.GetStream();
-            ssl = new SslStream(netStream, false, new RemoteCertificateValidationCallback(ValidateCert));
-            ssl.AuthenticateAsClient("InstantMessengerServer");
-            // Now we have encrypted connection.
+            byte[] res = sa.Encrypt(data, SAKey, SAIV);
+            return res;
+        }
 
-            br = new BinaryReader(ssl, Encoding.UTF8);
-            bw = new BinaryWriter(ssl, Encoding.UTF8);
+        public byte[] Decrypt(byte[] data)
+        {
+            byte[] res = sa.Decrypt(data, SAKey, SAIV);
+            return res;
+        }
 
-            // Receive "hello"
-            int hello = br.ReadInt32();
-            if (hello == IM_Hello)
+        void SetupConnection() 
+        {
+            switch (ConfigurationManager.AppSettings["Serialization"])
             {
-                // Hello OK, so answer.
-                bw.Write(IM_Hello);
+                case "Binary":
+                    serializator = new BinaryFormatter();
+                    break;
+                case "SOAP":
+                    serializator = new SoapFormatter();
+                    break;
+                default:
+                    serializator = new BinaryFormatter();
+                    break;
+            }
 
-                bw.Write(reg ? IM_Register : IM_Login);  // Login or register
-                bw.Write(UserName);
-                bw.Write(Password);
-                bw.Flush();
+            switch (ConfigurationManager.AppSettings["SA"])
+            {
+                case "TripleDesSymmetricAlgorithm":
+                    sa = new TripleDesSymmetricAlgorithm();
+                    break;
+                case "AesSymmetricAlgorithm":
+                    sa = new AesSymmetricAlgorithm();
+                    break;
+                default:
+                    sa = new TripleDesSymmetricAlgorithm();
+                    break;
+            }
 
-                byte ans = br.ReadByte();  // Read answer.
-                if (ans == IM_OK)  // Login/register OK
+            switch (ConfigurationManager.AppSettings["ASA"])
+            {
+                case "RSAAsymmetricAlgorithm":
+                    asa = new RSAAsymmetricAlgorithm();
+                    break;
+                default:
+                    asa = new RSAAsymmetricAlgorithm();
+                    break;
+            }
+            netClient = new NetClient(Server, Port);
+
+            asa.getPrepared();
+            byte[] RSAEncrypt = asa.getParametrs(false);
+
+            curMessage = new Message() { type = MessageType.RSAPublicRequest, data = RSAEncrypt};
+            netClient.Send(Serialize(curMessage));
+
+            RSAEncrypt = asa.getParametrs(true);
+            SAKey = asa.Decrypt(Deserialize(netClient.Recieve()).data, RSAEncrypt);
+            SAIV = asa.Decrypt(Deserialize(netClient.Recieve()).data, RSAEncrypt);
+
+            curMessage = Deserialize(Decrypt(netClient.Recieve()));
+            if (curMessage.type == MessageType.Hello)
+            {
+                curMessage = new Message() { type = MessageType.Hello };
+                netClient.Send(Encrypt(Serialize(curMessage)));
+                curMessage = new Message() { type = reg ? MessageType.Register : MessageType.Login, message = UserName };
+                netClient.Send(Encrypt(Serialize(curMessage)));
+                curMessage = new Message() { type = reg ? MessageType.Register : MessageType.Login, message = Password };
+                netClient.Send(Encrypt(Serialize(curMessage)));
+
+                curMessage = Deserialize(Decrypt(netClient.Recieve()));
+                if (curMessage.type == MessageType.OK) 
                 {
                     if (reg)
-                        OnRegisterOK();  // Register is OK.
-                    OnLoginOK();  // Login is OK (when registered, automatically logged in)
-                    Receiver(); // Time for listening for incoming messages.
+                        OnRegisterOK(); 
+                    OnLoginOK();  
+                    Receiver(); 
                 }
                 else
                 {
-                    FMErrorEventArgs err = new FMErrorEventArgs((FMError)ans);
+                    FMErrorEventArgs err = new FMErrorEventArgs((FMError)curMessage.type);
                     if (reg)
                         OnRegisterFailed(err);
                     else
@@ -171,36 +283,32 @@ namespace FlexMessengerClient
             if (_conn)
                 CloseConnection();
         }
-        void CloseConnection() // Close connection.
+        void CloseConnection() 
         {
-            br.Close();
-            bw.Close();
-            ssl.Close();
-            netStream.Close();
-            client.Close();
+            netClient.Close();
             OnDisconnected();
             _conn = false;
         }
-        void Receiver()  // Receive all incoming packets.
+        void Receiver()  
         {
             _logged = true;
 
             try
             {
-                while (client.Connected)  // While we are connected.
+                while (netClient.Client.Connected)  
                 {
-                    byte type = br.ReadByte();  // Get incoming packet type.
+                    curMessage = Deserialize(Decrypt(netClient.Recieve()));
 
-                    if (type == IM_IsAvailable)
+                    if (curMessage.type == MessageType.IsAvailable)
                     {
-                        string user = br.ReadString();
-                        bool isAvail = br.ReadBoolean();
+                        string user = curMessage.recipient;
+                        bool isAvail = (curMessage.message == "true") ? true : false;
                         OnUserAvail(new AvailEventArgs(user, isAvail));
                     }
-                    else if (type == IM_Received)
+                    else if (curMessage.type == MessageType.Received)
                     {
-                        string from = br.ReadString();
-                        string msg = br.ReadString();
+                        string from = curMessage.sender;
+                        string msg = curMessage.message;
                         OnMessageReceived(new ReceivedEventArgs(from, msg));
                     }
                 }
@@ -208,31 +316,6 @@ namespace FlexMessengerClient
             catch (IOException) { }
 
             _logged = false;
-        }
-
-        // Packet types
-        public const int IM_Hello = 2012;      // Hello
-        public const byte IM_OK = 0;           // OK
-        public const byte IM_Login = 1;        // Login
-        public const byte IM_Register = 2;     // Register
-        public const byte IM_TooUsername = 3;  // Too long username
-        public const byte IM_TooPassword = 4;  // Too long password
-        public const byte IM_Exists = 5;       // Already exists
-        public const byte IM_NoExists = 6;     // Doesn't exist
-        public const byte IM_WrongPass = 7;    // Wrong password
-        public const byte IM_IsAvailable = 8;  // Is user available?
-        public const byte IM_Send = 9;         // Send message
-        public const byte IM_Received = 10;    // Message received
-        
-        public static bool ValidateCert(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors)
-        {
-            // Uncomment this lines to disallow untrusted certificates.
-            //if (sslPolicyErrors == SslPolicyErrors.None)
-            //    return true;
-            //else
-            //    return false;
-
-            return true; // Allow untrusted certificates.
         }
     }
 }

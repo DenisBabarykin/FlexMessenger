@@ -18,6 +18,11 @@ namespace SocketsWrapper
             this.tcpClient = tcpClient;
             netStream = tcpClient.GetStream();
         }
+        public NetClient(string hostname, int port)
+        {
+            tcpClient = new TcpClient(hostname, port);
+            netStream = tcpClient.GetStream();
+        }
         public byte[] Recieve()
         {
             using (var ms = new MemoryStream())

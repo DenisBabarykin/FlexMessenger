@@ -19,7 +19,10 @@ namespace SocketsWrapper
         WrongPass,
         IsAvailable,
         Send,
-        Received
+        Received,
+        RSAPublicRequest,
+        SymmetricKey,
+        SymmetricIV
     }
 
     [Serializable]

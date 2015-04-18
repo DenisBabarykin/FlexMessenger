@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SocketsWrapper;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,11 +8,11 @@ namespace FlexMessengerClient
 {
     public enum FMError : byte
     {
-        TooUserName = Client.IM_TooUsername,
-        TooPassword = Client.IM_TooPassword,
-        Exists = Client.IM_Exists,
-        NoExists = Client.IM_NoExists,
-        WrongPassword = Client.IM_WrongPass
+        TooUserName = MessageType.TooUsername,
+        TooPassword = MessageType.TooPassword,
+        Exists = MessageType.Exists,
+        NoExists = MessageType.NoExists,
+        WrongPassword = MessageType.WrongPass
     }
 
     public class FMErrorEventArgs : EventArgs

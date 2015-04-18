@@ -10,6 +10,7 @@ using System.Runtime.Serialization.Formatters.Soap;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Encryption;
 
 namespace Service
 {
@@ -18,6 +19,13 @@ namespace Service
         INetClient netClient;
         UserInfo userInfo;
         IFormatter serializator;
+        Message curMessage;
+
+        SymmetricAlgorithm sa;
+        AsymmetricAlgorithm asa;
+
+        byte[] SAKey;
+        byte[] SAIV; 
 
         public ClientHandler(INetClient netClient) 
         {
@@ -34,6 +42,31 @@ namespace Service
                     serializator = new BinaryFormatter();
                     break;
             }
+
+            switch (ConfigurationManager.AppSettings["SA"])
+            {
+                case "TripleDesSymmetricAlgorithm":
+                    sa = new TripleDesSymmetricAlgorithm();
+                    break;
+                case "AesSymmetricAlgorithm":
+                    sa = new AesSymmetricAlgorithm();
+                    break;
+                default:
+                    sa = new TripleDesSymmetricAlgorithm();
+                    break;
+            }
+
+            switch (ConfigurationManager.AppSettings["ASA"])
+            {
+                case "RSAAsymmetricAlgorithm":
+                    asa = new RSAAsymmetricAlgorithm();
+                    break;
+                default:
+                    asa = new RSAAsymmetricAlgorithm();
+                    break;
+            }
+
+
             (new Thread(new ThreadStart(SetupConnection))).Start();
         }
 
@@ -54,21 +87,56 @@ namespace Service
             }
         }
 
+        public byte[] Encrypt(byte[] data)
+        {
+            byte[] res = sa.Encrypt(data, SAKey, SAIV);
+            return res;
+        }
+
+        public byte[] Decrypt(byte[] data)
+        {
+            byte[] res = sa.Decrypt(data, SAKey, SAIV);
+            return res;
+        }
+
+
         void SetupConnection()  // Setup connection and login or register.
         {
             try
             {
                 Console.WriteLine("[{0}] New connection!", DateTime.Now);
-                Message curMessage = new Message { type = MessageType.Hello };
-                netClient.Send(Serialize(curMessage));
+
+                string date = DateTime.Now.ToString();
+                lock (FacadeSingleton.Instance.thisLock)
+                {
+                    FacadeSingleton.Instance.fileLogger.WriteLogFile(date + " New connection!" + "\n");
+                }
 
                 curMessage = Deserialize(netClient.Recieve());
+                byte[] RSAEncrypt = curMessage.data;
+
+                sa.getPrepared();
+                SAKey = sa.getKey();
+                SAIV = sa.getIV();
+
+                byte[] encrypted = asa.Encrypt(SAKey, RSAEncrypt);
+                curMessage = new Message { type = MessageType.SymmetricKey, data = encrypted };
+                netClient.Send(Serialize(curMessage));
+
+                encrypted = asa.Encrypt(SAIV, RSAEncrypt);
+                curMessage = new Message { type = MessageType.SymmetricIV, data = encrypted };
+                netClient.Send(Serialize(curMessage));
+
+                curMessage = new Message { type = MessageType.Hello };
+                netClient.Send(Encrypt(Serialize(curMessage)));
+
+                curMessage = Deserialize(Decrypt(netClient.Recieve()));
                 if (curMessage.type == MessageType.Hello)
                 {
-                    curMessage = Deserialize(netClient.Recieve());
+                    curMessage = Deserialize(Decrypt(netClient.Recieve()));
                     int logMode = (int) curMessage.type;
-                    string userName = Deserialize(netClient.Recieve()).message;
-                    string password = Deserialize(netClient.Recieve()).message;
+                    string userName = Deserialize(Decrypt(netClient.Recieve())).message;
+                    string password = Deserialize(Decrypt(netClient.Recieve())).message;
                     if (userName.Length < 10) 
                     {
                         if (password.Length < 20)
@@ -80,15 +148,22 @@ namespace Service
                                     userInfo = new UserInfo(userName, password, this);
                                     FacadeSingleton.Instance.users.Add(userName, userInfo);
                                     curMessage = new Message { type = MessageType.OK };
-                                    netClient.Send(Serialize(curMessage));
+                                    netClient.Send(Encrypt(Serialize(curMessage)));
                                     Console.WriteLine("[{0}] ({1}) Registered new user", DateTime.Now, userName);
+
+                                    lock (FacadeSingleton.Instance.thisLock)
+                                    {
+                                        FacadeSingleton.Instance.fileLogger.WriteLogFile(date + " Registered new user " + userName + "\n");
+                                    }
+
+
                                     FacadeSingleton.Instance.SaveUsers();
                                     Receiver();
                                 }
                                 else
                                 {
                                     curMessage = new Message { type = MessageType.Exists };
-                                    netClient.Send(Serialize(curMessage));
+                                    netClient.Send(Encrypt(Serialize(curMessage)));
                                 }
                             }
                             else if (logMode == (int) MessageType.Login) 
@@ -102,32 +177,32 @@ namespace Service
 
                                         userInfo.Connection = this;
                                         curMessage = new Message { type = MessageType.OK };
-                                        netClient.Send(Serialize(curMessage));
+                                        netClient.Send(Encrypt(Serialize(curMessage)));
                                         Receiver();  // Listen to client in loop.
                                     }
                                     else
                                     {
                                         curMessage = new Message { type = MessageType.WrongPass };
-                                        netClient.Send(Serialize(curMessage));
+                                        netClient.Send(Encrypt(Serialize(curMessage)));
                                     }
                                 }
                                 else
                                 {
                                     curMessage = new Message { type = MessageType.NoExists };
-                                    netClient.Send(Serialize(curMessage));
+                                    netClient.Send(Encrypt(Serialize(curMessage)));
                                 }
                             }
                         }
                         else
                         {
                             curMessage = new Message { type = MessageType.TooPassword };
-                            netClient.Send(Serialize(curMessage));
+                            netClient.Send(Encrypt(Serialize(curMessage)));
                         }
                     }
                     else
                     {
                         curMessage = new Message { type = MessageType.TooUsername };
-                        netClient.Send(Serialize(curMessage));
+                        netClient.Send(Encrypt(Serialize(curMessage)));
                     }
                 }
                 CloseConnection();
@@ -141,12 +216,28 @@ namespace Service
                 userInfo.LoggedIn = false;
                 netClient.Close();
                 Console.WriteLine("[{0}] End of connection!", DateTime.Now);
+
+                string date = DateTime.Now.ToString();
+                lock (FacadeSingleton.Instance.thisLock)
+                {
+                    FacadeSingleton.Instance.fileLogger.WriteLogFile(date + " End of connection!" + "\n");
+                }
+
+
             }
             catch { }
         }
         void Receiver()
         {
             Console.WriteLine("[{0}] ({1}) User logged in", DateTime.Now, userInfo.UserName);
+
+            string date = DateTime.Now.ToString();
+            lock (FacadeSingleton.Instance.thisLock)
+            {
+                FacadeSingleton.Instance.fileLogger.WriteLogFile(date + " User logged in " + userInfo.UserName + "\n");
+            }
+
+
             userInfo.LoggedIn = true;
             Message curMessage;
 
@@ -154,7 +245,7 @@ namespace Service
             {
                 while (netClient.Client.Connected)
                 {
-                    curMessage = Deserialize(netClient.Recieve());
+                    curMessage = Deserialize(Decrypt(netClient.Recieve()));
                     if (curMessage.type == MessageType.IsAvailable)
                     {
                         string who = curMessage.recipient;
@@ -168,7 +259,7 @@ namespace Service
                         }
                         else
                             curMessage = new Message { type = MessageType.IsAvailable, recipient = who, message = "false" };
-                        netClient.Send(Serialize(curMessage));
+                        netClient.Send(Encrypt(Serialize(curMessage)));
                     }
                     else if (curMessage.type == MessageType.Send)
                     {
@@ -181,8 +272,13 @@ namespace Service
                             if (recipient.LoggedIn)
                             {
                                 curMessage = new Message { type = MessageType.Received, sender = userInfo.UserName, message = msg };
-                                netClient.Send(Serialize(curMessage));
+                                netClient.Send(Encrypt(Serialize(curMessage)));
                                 Console.WriteLine("[{0}] ({1} -> {2}) Message sent!", DateTime.Now, userInfo.UserName, recipient.UserName);
+
+                                lock (FacadeSingleton.Instance.thisLock)
+                                {
+                                    FacadeSingleton.Instance.fileLogger.WriteLogFile(date + " Message sent! " + userInfo.UserName + "  " + recipient.UserName + "\n");
+                                }
                             }
                         }
                     }
@@ -192,6 +288,11 @@ namespace Service
 
             userInfo.LoggedIn = false;
             Console.WriteLine("[{0}] ({1}) User logged out", DateTime.Now, userInfo.UserName);
+
+            lock (FacadeSingleton.Instance.thisLock)
+            {
+                FacadeSingleton.Instance.fileLogger.WriteLogFile(date + " User logged out " + userInfo.UserName + "\n");
+            }
         }
     }
 }
