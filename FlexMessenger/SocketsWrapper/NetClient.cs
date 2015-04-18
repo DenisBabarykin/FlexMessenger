@@ -40,5 +40,7 @@ namespace SocketsWrapper
         {
             tcpClient.Close();
         }
+
+        public Socket Client { get { return tcpClient.Client; } set { tcpClient.Client = value; } }
     }
 }
