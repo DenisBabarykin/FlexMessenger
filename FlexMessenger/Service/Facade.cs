@@ -16,15 +16,15 @@ namespace Service
     {
         string usersFilename = Environment.CurrentDirectory + "\\" + ConfigurationManager.AppSettings["UsersFilename"];
 
-        static string logFileName = Environment.CurrentDirectory + "\\" + ConfigurationManager.AppSettings["logFileName"];  //          
+        static string logFileName = Environment.CurrentDirectory + "\\" + ConfigurationManager.AppSettings["logFileName"];           
 
-        static string lType = ConfigurationManager.AppSettings["loggerType"];   //
+        static string lType = ConfigurationManager.AppSettings["loggerType"];   
 
-        static LoggerType logType = lType == "Server" ? LoggerType.SERVER : LoggerType.CLIENT;    //
+        static LoggerType logType = lType == "Server" ? LoggerType.SERVER : LoggerType.CLIENT;    
 
-        public Object thisLock = new Object();     //
+        public Object thisLock = new Object();     
 
-        public FileLogger fileLogger = new FileLogger(logFileName, logType);   //
+        public FileLogger fileLogger = new FileLogger(logFileName, logType); 
 
         public Dictionary<string, UserInfo> users = new Dictionary<string, UserInfo>();
 
@@ -37,7 +37,7 @@ namespace Service
 
             lock (thisLock)
             {
-                fileLogger.WriteLogFile("----- InstantMessenger Server -----\n");
+                fileLogger.WriteLogFile("----- FlexMessenger Server -----\n");
             }
 
             LoadUsers();

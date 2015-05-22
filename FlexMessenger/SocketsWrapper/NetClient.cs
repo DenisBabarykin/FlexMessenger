@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
@@ -25,17 +26,22 @@ namespace SocketsWrapper
         }
         public byte[] Recieve()
         {
-            using (var ms = new MemoryStream())
+            int incomingLength;
+            byte[] recievedMessage;
+
+            using (var br = new BinaryReader(tcpClient.GetStream()))
             {
-                netStream.CopyTo(ms);
-                return ms.ToArray();
+                incomingLength = br.ReadInt32();
+                recievedMessage = br.ReadBytes(incomingLength);
             }
+            return recievedMessage;
         }
 
         public void Send(byte[] byteAr)
         {
             using (var binWriter = new BinaryWriter(netStream))
             {
+                binWriter.Write(byteAr.Length);
                 binWriter.Write(byteAr);
                 binWriter.Close();
             }
